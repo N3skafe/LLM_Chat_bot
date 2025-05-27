@@ -1,0 +1,29 @@
+# Virtual Environment
+.venv/
+venv/
+env/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+
+# IDE
+.vscode/
+.idea/
+
+# Misc
+.DS_Store 
+
+# Large files and data
+*.pdf
+m_agent_chatbot/data/pdfs/
+m_agent_chatbot/data/chroma_db/
+*.sqlite3
+*.bin
+*.pickle 

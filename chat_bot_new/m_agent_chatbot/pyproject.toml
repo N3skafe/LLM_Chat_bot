@@ -1,0 +1,39 @@
+[tool.poetry]
+name = "multi-agent-chatbot"
+version = "0.1.0"
+description = "A multi-agent chatbot using LangChain and Ollama"
+authors = ["Your Name <your.email@example.com>"]
+license = "MIT"
+readme = "README.md"
+
+
+[tool.poetry.dependencies]
+python = ">=3.10,<3.12"
+langchain = "^0.1.16"
+langchain-core = "^0.1.42"
+langchain-community = "^0.0.38"
+langgraph = "^0.0.35"
+streamlit = "^1.32.2"
+python-dotenv = "^1.0.1"
+chromadb = "^0.4.24"
+sentence-transformers = "^2.5.1"
+pydantic = "^2.6.4"
+gradio = "5.29.1"
+pypdf = "^4.0.0"
+tiktoken = "^0.6.0"
+pillow = "^10.0.0"
+unstructured = {extras = ["pdf"], version = "^0.13.0"}
+pikepdf = "^8.14.0"
+beautifulsoup4 = "^4.12.3"
+pdfplumber = "^0.11.6"
+pytesseract = "^0.3.10"
+duckduckgo-search = "^8.0.2"
+pymupdf = "^1.24.0"  # PyMuPDF for better PDF handling
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^7.4.0"
+ruff = "^0.9" # Python Linter
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

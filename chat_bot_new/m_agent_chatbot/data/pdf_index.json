@@ -1,0 +1,37 @@
+{
+  "edb31278-b91c-4094-b385-3c9d9cbb473d": {
+    "id": "edb31278-b91c-4094-b385-3c9d9cbb473d",
+    "filename": "1111.pdf",
+    "path": "data\\pdfs\\edb31278-b91c-4094-b385-3c9d9cbb473d.pdf"
+  },
+  "49682b62-bf44-474c-98c6-7a886efaebca": {
+    "id": "49682b62-bf44-474c-98c6-7a886efaebca",
+    "filename": "1111.pdf",
+    "path": "data\\pdfs\\49682b62-bf44-474c-98c6-7a886efaebca.pdf"
+  },
+  "c3263e4e-99bf-4f17-bc8a-0e9b2f9a4551": {
+    "id": "c3263e4e-99bf-4f17-bc8a-0e9b2f9a4551",
+    "filename": "1111.pdf",
+    "path": "data\\pdfs\\c3263e4e-99bf-4f17-bc8a-0e9b2f9a4551.pdf"
+  },
+  "d5ae9486-b659-477e-bf0e-c991a104dbfe": {
+    "id": "d5ae9486-b659-477e-bf0e-c991a104dbfe",
+    "filename": "Data-Structures-&-Algorithms-with-JavaScript.pdf",
+    "path": "data\\pdfs\\d5ae9486-b659-477e-bf0e-c991a104dbfe.pdf"
+  },
+  "d090aad3-434e-4710-8317-e347d7506005": {
+    "id": "d090aad3-434e-4710-8317-e347d7506005",
+    "filename": "Data-Structures-&-Algorithms-with-JavaScript.pdf",
+    "path": "data\\pdfs\\d090aad3-434e-4710-8317-e347d7506005.pdf"
+  },
+  "9dbaf6a5-5e82-42a1-a419-ca1bbb970151": {
+    "id": "9dbaf6a5-5e82-42a1-a419-ca1bbb970151",
+    "filename": "Data-Structures-&-Algorithms-with-JavaScript.pdf",
+    "path": "F:\\LLM_Chat_bot\\chat_bot_new\\m_agent_chatbot\\data\\pdfs\\f375ccb8-1b7a-430a-966d-31ba38c32e43_Data-Structures-&-Algorithms-with-JavaScript.pdf"
+  },
+  "a218ad06-f859-4c68-a0fe-0ca5010fc6b7": {
+    "id": "a218ad06-f859-4c68-a0fe-0ca5010fc6b7",
+    "filename": "f375ccb8-1b7a-430a-966d-31ba38c32e43_Data-Structures-&-Algorithms-with-JavaScript.pdf",
+    "path": "F:\\LLM_Chat_bot\\chat_bot_new\\m_agent_chatbot\\data\\pdfs\\6cd6c57e-7ac8-4c8a-8fad-3d1f7aa5ed2e_f375ccb8-1b7a-430a-966d-31ba38c32e43_Data-Structures-&-Algorithms-with-JavaScript.pdf"
+  }
+}
