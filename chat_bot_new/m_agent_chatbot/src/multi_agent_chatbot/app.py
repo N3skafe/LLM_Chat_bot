@@ -9,6 +9,10 @@ import asyncio
 import warnings
 import logging
 import hashlib
+import multi_agent_chatbot.rag_handler as rag_handler
+import signal
+import atexit
+import threading
 
 # 모든 경고 메시지 무시
 warnings.filterwarnings("ignore")
@@ -29,7 +33,6 @@ parent_dir = os.path.dirname(current_file_dir)
 sys.path.insert(0, parent_dir)
 
 from multi_agent_chatbot.agent_logic import run_graph
-from multi_agent_chatbot.rag_handler import process_and_embed_pdf, PDF_STORAGE_PATH
 
 # 이미지 캐싱을 위한 함수
 @st.cache_data
@@ -489,19 +492,19 @@ def process_pdf_upload(pdf_file):
             temp_file_path = tmp_file.name
 
         try:
-            success = process_and_embed_pdf(temp_file_path, original_filename=pdf_file.name)
+            success = rag_handler.process_and_embed_pdf(temp_file_path, original_filename=pdf_file.name)
             if success:
                 return f"'{pdf_file.name}' 파일이 성공적으로 처리되어 RAG DB에 추가되었습니다."
             else:
                 # 실패 원인 확인
                 pdf_id = None
-                for pid, info in pdf_metadata.items():
+                for pid, info in rag_handler.pdf_metadata.items():
                     if info["filename"] == pdf_file.name and info["status"] == "failed":
                         pdf_id = pid
                         break
                 
-                if pdf_id and "error" in pdf_metadata[pdf_id]:
-                    return f"'{pdf_file.name}' 파일 처리 실패: {pdf_metadata[pdf_id]['error']}"
+                if pdf_id and "error" in rag_handler.pdf_metadata[pdf_id]:
+                    return f"'{pdf_file.name}' 파일 처리 실패: {rag_handler.pdf_metadata[pdf_id]['error']}"
                 else:
                     return f"'{pdf_file.name}' 파일 처리 중 알 수 없는 오류가 발생했습니다."
         except Exception as e:
@@ -526,169 +529,207 @@ def stream_response(response_text):
     response_container.markdown(full_response)
     return full_response
 
+def cleanup_resources():
+    """앱 종료 시 리소스를 정리합니다."""
+    try:
+        # RAG 시스템 정리
+        if hasattr(rag_handler, 'cleanup_old_databases'):
+            rag_handler.cleanup_old_databases()
+        
+        # 세션 상태 정리
+        if "messages" in st.session_state:
+            del st.session_state.messages
+        if "streaming" in st.session_state:
+            del st.session_state.streaming
+        
+        print("리소스가 성공적으로 정리되었습니다.")
+    except Exception as e:
+        print(f"리소스 정리 중 오류 발생: {str(e)}")
+
+def on_shutdown():
+    """Streamlit 앱 종료 시 호출되는 콜백 함수"""
+    cleanup_resources()
+
+# Streamlit 종료 콜백 등록
+st.runtime.scriptrunner.add_script_run_ctx().on_shutdown = on_shutdown
+
 def main():
-    # 사이드바 설정
-    with st.sidebar:
-        # 사이드바 헤더
-        st.markdown("""
-        <div class="sidebar-header">
-            <img src="https://i.postimg.cc/y8Jckyhh/big2.png" alt="Logo">
-            <h1>인공지능 에이젼트 "오잉"</h1>
-        </div>
-        """, unsafe_allow_html=True)
-        
-        # 새로운 채팅 시작 버튼
-        st.markdown('<div class="sidebar-section">', unsafe_allow_html=True)
-        st.markdown('<h2>💬 채팅 관리</h2>', unsafe_allow_html=True)
-        if st.button("새로운 채팅 시작", key="new_chat", use_container_width=True):
-            start_new_chat()
-            st.rerun()
-        st.markdown('</div>', unsafe_allow_html=True)
-        
-        # RAG 설정
-        st.markdown('<div class="sidebar-section">', unsafe_allow_html=True)
-        st.markdown('<h2>📚 RAG 설정</h2>', unsafe_allow_html=True)
-        pdf_file = st.file_uploader("PDF 파일 업로드", type=['pdf'])
-        if pdf_file:
-            with st.spinner("PDF 처리 중..."):
-                status = process_pdf_upload(pdf_file)
-                st.info(status)
-        st.markdown('</div>', unsafe_allow_html=True)
-
-        # 모델 정보
-        st.markdown('<div class="sidebar-section">', unsafe_allow_html=True)
-        st.markdown('<h2>🤖 모델 정보</h2>', unsafe_allow_html=True)
-        st.markdown("""
-        <div class="model-info">
-            <p><strong>일반 질문</strong>: qwen3:latest</p>
-            <p><strong>이미지/PDF</strong>: llava:7b</p>
-            <p><strong>복잡한 추론/이미지</strong>: llama3.2:latest</p>
-            <p><strong>코딩/수학</strong>: deepseek-r1:latest</p>
-            <p><strong>임베딩</strong>: nomic-embed-text:latest</p>
-            <p><strong>벡터DB</strong>: ChromaDB</p>
-        </div>
-        """, unsafe_allow_html=True)
-        st.markdown('</div>', unsafe_allow_html=True)
-
-        # 사용 팁
-        st.markdown('<div class="sidebar-section">', unsafe_allow_html=True)
-        st.markdown('<h2>💡 사용 팁</h2>', unsafe_allow_html=True)
-        st.markdown("""
-        <div class="usage-tips">
-            <ul>
-                <li>PDF를 업로드하면 해당 내용 기반으로 답변합니다.</li>
-                <li>이미지와 함께 질문하면 이미지를 분석하여 답변에 활용합니다.</li>
-                <li>'코드 짜줘', '수학 문제 풀어줘' 등으로 특정 에이전트를 유도할 수 있습니다.</li>
-            </ul>
-        </div>
-        """, unsafe_allow_html=True)
-        st.markdown('</div>', unsafe_allow_html=True)
-
-    # 메인 컨테이너
-    st.markdown('<div class="main-container">', unsafe_allow_html=True)
-    
-    # 채팅 메시지 표시 영역 (상단)
-    st.markdown('<div class="chat-container">', unsafe_allow_html=True)
-    
-    # 메시지 표시를 위한 컨테이너
-    messages_container = st.container()
-    
-    # 메시지 표시
-    with messages_container:
-        if not st.session_state.messages:
-            st.markdown(f"""
-            <div class="chat-message assistant">
-                <div class="avatar">🤖</div>
-                <div class="message">
-                    안녕하세요! 저는 멀티 에이전트 AI "OING"입니다. 🤖<br><br>
-                    저는 다음과 같은 도움을 드릴 수 있습니다:<br>
-                    • PDF 문서 기반 질문 답변 📚<br>
-                    • 이미지 분석 및 설명 🖼️<br>
-                    • 코딩 및 수학 문제 해결 💻<br>
-                    • 일반적인 대화 및 질문 답변 💬<br><br>
-                    무엇을 도와드릴까요?
-                </div>
+    try:
+        # 사이드바 설정
+        with st.sidebar:
+            # 사이드바 헤더
+            st.markdown("""
+            <div class="sidebar-header">
+                <img src="https://i.postimg.cc/y8Jckyhh/big2.png" alt="Logo">
+                <h1>인공지능 에이젼트 "오잉"</h1>
             </div>
             """, unsafe_allow_html=True)
-        else:
-            for message in st.session_state.messages:
-                if message["role"] == "user":
-                    st.markdown(f"""
-                    <div class="chat-message user">
-                        <div class="message">{message["content"]}</div>
-                        <div class="avatar">👤</div>
-                    </div>
-                    """, unsafe_allow_html=True)
-                    if "image" in message:
-                        st.image(message["image"], width=300)
-                else:
-                    st.markdown(f"""
-                    <div class="chat-message assistant">
-                        <div class="avatar">🤖</div>
-                        <div class="message">{message["content"]}</div>
-                    </div>
-                    """, unsafe_allow_html=True)
-    
-    st.markdown('</div>', unsafe_allow_html=True)
+            
+            # 새로운 채팅 시작 버튼
+            st.markdown('<div class="sidebar-section">', unsafe_allow_html=True)
+            st.markdown('<h2>💬 채팅 관리</h2>', unsafe_allow_html=True)
+            if st.button("새로운 채팅 시작", key="new_chat", use_container_width=True):
+                start_new_chat()
+                st.rerun()
+            st.markdown('</div>', unsafe_allow_html=True)
+            
+            # RAG 설정
+            st.markdown('<div class="sidebar-section">', unsafe_allow_html=True)
+            st.markdown('<h2>📚 RAG 설정</h2>', unsafe_allow_html=True)
+            pdf_file = st.file_uploader("PDF 파일 업로드", type=['pdf'])
+            if pdf_file:
+                with st.spinner("PDF 처리 중..."):
+                    status = process_pdf_upload(pdf_file)
+                    st.info(status)
+            st.markdown('</div>', unsafe_allow_html=True)
 
-    # 하단 고정 영역
-    st.markdown('<div class="bottom-container">', unsafe_allow_html=True)
-    st.markdown('<div class="bottom-content">', unsafe_allow_html=True)
+            # 모델 정보
+            st.markdown('<div class="sidebar-section">', unsafe_allow_html=True)
+            st.markdown('<h2>🤖 모델 정보</h2>', unsafe_allow_html=True)
+            st.markdown("""
+            <div class="model-info">
+                <p><strong>일반 질문</strong>: qwen3:latest</p>
+                <p><strong>이미지/PDF</strong>: llava:7b</p>
+                <p><strong>복잡한 추론/이미지</strong>: llama3.2:latest</p>
+                <p><strong>코딩/수학</strong>: deepseek-r1:latest</p>
+                <p><strong>임베딩</strong>: nomic-embed-text:latest</p>
+                <p><strong>벡터DB</strong>: ChromaDB</p>
+            </div>
+            """, unsafe_allow_html=True)
+            st.markdown('</div>', unsafe_allow_html=True)
 
-    # 이미지 업로드
-    st.markdown('<div class="image-uploader">', unsafe_allow_html=True)
-    uploaded_image = st.file_uploader("이미지 업로드", type=['png', 'jpg', 'jpeg'])
-    image = None
-    if uploaded_image:
-        image = load_image(uploaded_image)  # 캐시된 이미지 로드 함수 사용
-        st.image(image, width=200)
-    st.markdown('</div>', unsafe_allow_html=True)
+            # 사용 팁
+            st.markdown('<div class="sidebar-section">', unsafe_allow_html=True)
+            st.markdown('<h2>💡 사용 팁</h2>', unsafe_allow_html=True)
+            st.markdown("""
+            <div class="usage-tips">
+                <ul>
+                    <li>PDF를 업로드하면 해당 내용 기반으로 답변합니다.</li>
+                    <li>이미지와 함께 질문하면 이미지를 분석하여 답변에 활용합니다.</li>
+                    <li>'코드 짜줘', '수학 문제 풀어줘' 등으로 특정 에이전트를 유도할 수 있습니다.</li>
+                </ul>
+            </div>
+            """, unsafe_allow_html=True)
+            st.markdown('</div>', unsafe_allow_html=True)
 
-    # 사용자 입력
-    st.markdown('<div class="chat-input">', unsafe_allow_html=True)
-    if prompt := st.chat_input("여기에 질문을 입력하세요..."):
-        # 사용자 메시지 추가
-        st.session_state.messages.append({"role": "user", "content": prompt})
+            # 종료 버튼 추가
+            st.markdown('<div class="sidebar-section">', unsafe_allow_html=True)
+            st.markdown('<h2>⚙️ 시스템</h2>', unsafe_allow_html=True)
+            if st.button("앱 종료", key="exit_app", use_container_width=True):
+                cleanup_resources()
+                st.stop()
+            st.markdown('</div>', unsafe_allow_html=True)
+
+        # 메인 컨테이너
+        st.markdown('<div class="main-container">', unsafe_allow_html=True)
         
-        # 메시지 표시 업데이트
+        # 채팅 메시지 표시 영역 (상단)
+        st.markdown('<div class="chat-container">', unsafe_allow_html=True)
+        
+        # 메시지 표시를 위한 컨테이너
+        messages_container = st.container()
+        
+        # 메시지 표시
         with messages_container:
-            st.markdown(f"""
-            <div class="chat-message user">
-                <div class="message">{prompt}</div>
-                <div class="avatar">👤</div>
-            </div>
-            """, unsafe_allow_html=True)
-            if image:
-                st.session_state.messages[-1]["image"] = image
-                st.image(image, width=300)
-
-        # 챗봇 응답 생성
-        with st.spinner("생각 중..."):
-            try:
-                response = run_graph(
-                    prompt,
-                    [(m["content"], "") for m in st.session_state.messages if m["role"] == "user"],
-                    image
-                )
-                # 스트리밍 응답
-                full_response = stream_response(response)
-                st.session_state.messages.append({"role": "assistant", "content": full_response})
-                
-                # AI 응답 표시
-                with messages_container:
-                    st.markdown(f"""
-                    <div class="chat-message assistant">
-                        <div class="avatar">🤖</div>
-                        <div class="message">{full_response}</div>
+            if not st.session_state.messages:
+                st.markdown(f"""
+                <div class="chat-message assistant">
+                    <div class="avatar">🤖</div>
+                    <div class="message">
+                        안녕하세요! 저는 멀티 에이전트 AI "OING"입니다. 🤖<br><br>
+                        저는 다음과 같은 도움을 드릴 수 있습니다:<br>
+                        • PDF 문서 기반 질문 답변 📚<br>
+                        • 이미지 분석 및 설명 🖼️<br>
+                        • 코딩 및 수학 문제 해결 💻<br>
+                        • 일반적인 대화 및 질문 답변 💬<br><br>
+                        무엇을 도와드릴까요?
                     </div>
-                    """, unsafe_allow_html=True)
-            except Exception as e:
-                st.error(f"오류가 발생했습니다: {str(e)}")
-    st.markdown('</div>', unsafe_allow_html=True)
-    
-    st.markdown('</div>', unsafe_allow_html=True)  # bottom-content 닫기
-    st.markdown('</div>', unsafe_allow_html=True)  # bottom-container 닫기
-    st.markdown('</div>', unsafe_allow_html=True)  # main-container 닫기
+                </div>
+                """, unsafe_allow_html=True)
+            else:
+                for message in st.session_state.messages:
+                    if message["role"] == "user":
+                        st.markdown(f"""
+                        <div class="chat-message user">
+                            <div class="message">{message["content"]}</div>
+                            <div class="avatar">👤</div>
+                        </div>
+                        """, unsafe_allow_html=True)
+                        if "image" in message:
+                            st.image(message["image"], width=300)
+                    else:
+                        st.markdown(f"""
+                        <div class="chat-message assistant">
+                            <div class="avatar">🤖</div>
+                            <div class="message">{message["content"]}</div>
+                        </div>
+                        """, unsafe_allow_html=True)
+        
+        st.markdown('</div>', unsafe_allow_html=True)
+
+        # 하단 고정 영역
+        st.markdown('<div class="bottom-container">', unsafe_allow_html=True)
+        st.markdown('<div class="bottom-content">', unsafe_allow_html=True)
+
+        # 이미지 업로드
+        st.markdown('<div class="image-uploader">', unsafe_allow_html=True)
+        uploaded_image = st.file_uploader("이미지 업로드", type=['png', 'jpg', 'jpeg'])
+        image = None
+        if uploaded_image:
+            image = load_image(uploaded_image)  # 캐시된 이미지 로드 함수 사용
+            st.image(image, width=200)
+        st.markdown('</div>', unsafe_allow_html=True)
+
+        # 사용자 입력
+        st.markdown('<div class="chat-input">', unsafe_allow_html=True)
+        if prompt := st.chat_input("여기에 질문을 입력하세요..."):
+            # 사용자 메시지 추가
+            st.session_state.messages.append({"role": "user", "content": prompt})
+            
+            # 메시지 표시 업데이트
+            with messages_container:
+                st.markdown(f"""
+                <div class="chat-message user">
+                    <div class="message">{prompt}</div>
+                    <div class="avatar">👤</div>
+                </div>
+                """, unsafe_allow_html=True)
+                if image:
+                    st.session_state.messages[-1]["image"] = image
+                    st.image(image, width=300)
+
+            # 챗봇 응답 생성
+            with st.spinner("생각 중..."):
+                try:
+                    response = run_graph(
+                        prompt,
+                        [(m["content"], "") for m in st.session_state.messages if m["role"] == "user"],
+                        image
+                    )
+                    # 스트리밍 응답
+                    full_response = stream_response(response)
+                    st.session_state.messages.append({"role": "assistant", "content": full_response})
+                    
+                    # AI 응답 표시
+                    with messages_container:
+                        st.markdown(f"""
+                        <div class="chat-message assistant">
+                            <div class="avatar">🤖</div>
+                            <div class="message">{full_response}</div>
+                        </div>
+                        """, unsafe_allow_html=True)
+                except Exception as e:
+                    st.error(f"오류가 발생했습니다: {str(e)}")
+        st.markdown('</div>', unsafe_allow_html=True)
+        
+        st.markdown('</div>', unsafe_allow_html=True)  # bottom-content 닫기
+        st.markdown('</div>', unsafe_allow_html=True)  # bottom-container 닫기
+        st.markdown('</div>', unsafe_allow_html=True)  # main-container 닫기
+
+    except Exception as e:
+        st.error(f"오류가 발생했습니다: {str(e)}")
+        cleanup_resources()
+        st.stop()
 
 if __name__ == "__main__":
     main()

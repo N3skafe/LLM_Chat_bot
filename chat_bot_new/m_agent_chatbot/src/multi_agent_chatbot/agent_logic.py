@@ -4,6 +4,8 @@ from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.runnables import RunnablePassthrough, RunnableLambda
 from langgraph.graph import StateGraph, END
 import operator
+import json
+from datetime import datetime
 
 from .llm_config import AVAILABLE_MODELS, llm_general, llm_coding, llm_reasoning, llm_image
 from .rag_handler import get_relevant_documents, query_pdf_content
@@ -137,6 +139,62 @@ def web_search_node(state: AgentState) -> AgentState:
             "intermediate_steps": state.get("intermediate_steps", []) + [f"Web search error: {str(e)}"]
         }
 
+class ChatHistoryManager:
+    def __init__(self):
+        self.max_history_length = 1000
+        self.history_file = "chat_history.json"
+        self.state = {
+            "input_query": "",
+            "chat_history": [],
+            "image_data": None,
+            "image_analysis_result": None,
+            "rag_context": None,
+            "web_search_results": None,
+            "selected_agent": "general",
+            "output_message": None,
+            "intermediate_steps": []
+        }
+    
+    def load_history(self):
+        try:
+            with open(self.history_file, 'r', encoding='utf-8') as f:
+                history = json.load(f)
+                self.state["chat_history"] = history
+                print(f"Loaded {len(history)} messages from history")
+        except Exception as e:
+            logger.error(f"Error loading chat history: {e}")
+            self.state["chat_history"] = []
+    
+    def save_history(self):
+        try:
+            with open(self.history_file, 'w', encoding='utf-8') as f:
+                json.dump(self.state["chat_history"], f, ensure_ascii=False, indent=2)
+            print(f"Saved {len(self.state['chat_history'])} messages to history")
+        except Exception as e:
+            logger.error(f"Error saving chat history: {e}")
+    
+    def add_message(self, role, content):
+        if len(self.state["chat_history"]) >= self.max_history_length:
+            self.state["chat_history"].pop(0)
+        
+        message = {
+            "role": role,
+            "content": content,
+            "timestamp": datetime.now().isoformat()
+        }
+        self.state["chat_history"].append(message)
+        self.save_history()
+    
+    def get_recent_history(self, n=6):
+        return self.state["chat_history"][-n:]
+    
+    def clear_history(self):
+        self.state["chat_history"] = []
+        self.save_history()
+
+# ChatHistoryManager 인스턴스 생성
+chat_history_manager = ChatHistoryManager()
+
 def llm_call_node(state: AgentState) -> AgentState:
     """선택된 에이전트(LLM)를 호출하고 응답을 생성합니다."""
     agent_name = state["selected_agent"]
@@ -202,11 +260,12 @@ def llm_call_node(state: AgentState) -> AgentState:
     
     # 대화 기록 추가 (최근 3개만)
     if history:
-        for msg in history[-6:]:
-            if isinstance(msg, HumanMessage):
-                messages.append(HumanMessage(content=msg.content))
-            elif isinstance(msg, AIMessage):
-                messages.append(AIMessage(content=msg.content))
+        recent_history = chat_history_manager.get_recent_history(3)
+        for msg in recent_history:
+            if msg["role"] == "user":
+                messages.append(HumanMessage(content=msg["content"]))
+            elif msg["role"] == "assistant":
+                messages.append(AIMessage(content=msg["content"]))
     
     # 현재 쿼리 추가
     messages.append(HumanMessage(content=query))
@@ -276,6 +335,10 @@ def llm_call_node(state: AgentState) -> AgentState:
         # 빈 응답 처리
         if not response_text:
             response_text = "죄송합니다. 다시 한번 질문해주시겠어요?"
+        
+        # 응답 저장
+        chat_history_manager.add_message("user", query)
+        chat_history_manager.add_message("assistant", response_text)
         
         return {
             "output_message": response_text,
@@ -368,5 +431,9 @@ def run_graph(query: str, chat_history: List[Tuple[str, str]], image_pil: Option
     }
     
     final_state = app_graph.invoke(initial_state)
+    
+    # 응답 저장
+    chat_history_manager.add_message("user", query)
+    chat_history_manager.add_message("assistant", final_state.get("output_message", "죄송합니다. 답변을 생성하지 못했습니다."))
     
     return final_state.get("output_message", "죄송합니다. 답변을 생성하지 못했습니다.")

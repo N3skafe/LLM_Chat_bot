@@ -18,6 +18,10 @@ from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 
 from .llm_config import llm_image
+from .utils import (
+    logger, CacheManager, FileManager, ErrorHandler,
+    get_hash, format_timestamp, validate_result
+)
 
 # 로깅 설정
 logging.basicConfig(level=logging.ERROR)
@@ -203,3 +207,49 @@ def get_image_analysis_prompt(image_path: str, query: Optional[str] = None) -> s
     except Exception as e:
         logger.error(f"Error creating image analysis prompt: {e}")
         return ""
+
+class ImageProcessor:
+    def __init__(self):
+        self.cache_manager = CacheManager()
+        self.file_manager = FileManager(IMAGE_STORAGE_PATH)
+        self.error_handler = ErrorHandler()
+        self.cleanup_old_images()
+    
+    def process_image(self, image_data):
+        try:
+            image_hash = get_hash(image_data)
+            
+            cached_result = self.cache_manager.get(image_hash)
+            if cached_result:
+                logger.info(f"Using cached result for image {image_hash}")
+                return cached_result
+            
+            image = Image.open(io.BytesIO(image_data))
+            optimized_image = optimize_image(image)
+            
+            text = extract_text_from_image(optimized_image)
+            analysis_result, error = analyze_image_with_llm(optimized_image)
+            
+            result = {
+                "text": text,
+                "analysis": analysis_result,
+                "error": error
+            }
+            
+            self.cache_manager.set(image_hash, result)
+            return result
+        except Exception as e:
+            return self.error_handler.handle_error(e, "Error processing image")
+    
+    def cleanup_old_images(self):
+        self.file_manager.cleanup_old_files()
+
+# ImageProcessor 인스턴스 생성
+image_processor = ImageProcessor()
+
+# 기존 함수들을 ImageProcessor 메서드로 대체
+def process_image(image_data):
+    return image_processor.process_image(image_data)
+
+def cleanup_old_images():
+    return image_processor.cleanup_old_images()

@@ -2,6 +2,13 @@ import base64
 from PIL import Image
 import io
 import re
+import logging
+import time
+import hashlib
+import os
+from typing import Any, Dict, Optional, Callable
+from functools import lru_cache
+from datetime import datetime
 
 def pil_to_base64(image: Image.Image) -> str:
     """PIL Image 객체를 Base64 문자열로 변환합니다."""
@@ -45,3 +52,93 @@ def convert_js_to_python_code(js_code: str, llm) -> str:
     except Exception as e:
         print(f"Error converting JS to Python: {e}")
         return f"# Error converting JavaScript to Python: {e}\n# Original JavaScript:\n# {js_code}"
+
+# 로깅 설정
+def setup_logging():
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    )
+    return logging.getLogger(__name__)
+
+# 전역 로거 생성
+logger = setup_logging()
+
+class CacheManager:
+    def __init__(self, max_size: int = 1000, cache_duration: int = 3600):
+        self.cache = {}
+        self.max_size = max_size
+        self.cache_duration = cache_duration
+    
+    def get(self, key: str) -> Optional[Any]:
+        if key in self.cache:
+            entry = self.cache[key]
+            if time.time() - entry["timestamp"] < self.cache_duration:
+                return entry["result"]
+            else:
+                del self.cache[key]
+        return None
+    
+    def set(self, key: str, value: Any):
+        if len(self.cache) >= self.max_size:
+            oldest_key = min(self.cache.keys(), key=lambda k: self.cache[k]["timestamp"])
+            del self.cache[oldest_key]
+        
+        self.cache[key] = {
+            "result": value,
+            "timestamp": time.time()
+        }
+
+class FileManager:
+    def __init__(self, base_path: str):
+        self.base_path = base_path
+        os.makedirs(base_path, exist_ok=True)
+    
+    def ensure_directory_exists(self, directory_path: str):
+        if not os.path.exists(directory_path):
+            os.makedirs(directory_path)
+    
+    def cleanup_old_files(self, max_age_days: int = 1):
+        current_time = time.time()
+        max_age_seconds = max_age_days * 24 * 60 * 60
+        
+        for filename in os.listdir(self.base_path):
+            filepath = os.path.join(self.base_path, filename)
+            if os.path.getmtime(filepath) < current_time - max_age_seconds:
+                try:
+                    os.remove(filepath)
+                    logger.info(f"Removed old file: {filename}")
+                except Exception as e:
+                    logger.error(f"Error removing file {filename}: {e}")
+
+class ErrorHandler:
+    @staticmethod
+    def handle_error(error: Exception, context: str = "") -> str:
+        error_msg = f"{context}: {str(error)}" if context else str(error)
+        logger.error(error_msg)
+        return error_msg
+    
+    @staticmethod
+    def retry_operation(operation: Callable, max_retries: int = 3, delay: int = 1):
+        for attempt in range(max_retries):
+            try:
+                return operation()
+            except Exception as e:
+                if attempt == max_retries - 1:
+                    raise
+                time.sleep(delay)
+
+# 유틸리티 함수들
+@lru_cache(maxsize=100)
+def get_hash(data: bytes) -> str:
+    return hashlib.md5(data).hexdigest()
+
+def format_timestamp() -> str:
+    return datetime.now().isoformat()
+
+def validate_result(result: str, min_length: int = 10) -> bool:
+    if not result or not result.strip():
+        return False
+    if len(result) < min_length:
+        return False
+    return True

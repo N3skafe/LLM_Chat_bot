@@ -4,6 +4,11 @@ import logging
 import time
 import re
 from datetime import datetime
+import hashlib
+from .utils import (
+    logger, CacheManager, ErrorHandler,
+    get_hash, format_timestamp, validate_result
+)
 
 # 로깅 설정
 logging.basicConfig(level=logging.INFO)
@@ -52,44 +57,50 @@ def filter_search_result(result: str) -> str:
     
     return filtered_result
 
+class WebSearchManager:
+    def __init__(self):
+        self.cache_manager = CacheManager()
+        self.error_handler = ErrorHandler()
+        self.search = DuckDuckGoSearchRun()
+    
+    def search_with_cache(self, query):
+        try:
+            cache_key = get_hash(query.encode())
+            
+            cached_result = self.cache_manager.get(cache_key)
+            if cached_result:
+                logger.info(f"Using cached result for query: {query}")
+                return cached_result
+            
+            enhanced_query = enhance_search_query(query)
+            
+            def search_operation():
+                return self.search.run(enhanced_query)
+            
+            result = self.error_handler.retry_operation(search_operation)
+            filtered_result = filter_search_result(result)
+            
+            self.cache_manager.set(cache_key, filtered_result)
+            return filtered_result
+        except Exception as e:
+            return self.error_handler.handle_error(e, "Error in web search")
+    
+    def validate_result(self, result):
+        return validate_result(result)
+
+# WebSearchManager 인스턴스 생성
+web_search_manager = WebSearchManager()
+
+# 기존 함수들을 WebSearchManager 메서드로 대체
 def search_web(query: str, max_results: int = 3) -> List[Dict[str, str]]:
-    """
-    DuckDuckGo를 사용하여 웹 검색을 수행합니다.
-    
-    Args:
-        query (str): 검색 쿼리
-        max_results (int): 반환할 최대 결과 수 (LangChain의 DuckDuckGo 도구는 이 파라미터를 지원하지 않음)
-        
-    Returns:
-        List[Dict[str, str]]: 검색 결과 리스트
-    """
-    logger.info(f"웹 검색 시작: 쿼리='{query}'")
-    
-    try:
-        # 검색 쿼리 개선
-        enhanced_query = enhance_search_query(query)
-        
-        # 검색 시도
-        start_time = time.time()
-        result = search.run(enhanced_query)
-        end_time = time.time()
-        
-        logger.info(f"검색 완료 (소요 시간: {end_time - start_time:.2f}초)")
-        
-        # 결과 필터링
-        filtered_result = filter_search_result(result)
-        logger.debug(f"필터링된 검색 결과: {filtered_result[:200]}...")
-        
-        # 결과를 리스트 형태로 변환
+    result = web_search_manager.search_with_cache(query)
+    if web_search_manager.validate_result(result):
         return [{
             'title': query,
             'link': '',
-            'body': filtered_result
+            'body': result
         }]
-            
-    except Exception as e:
-        logger.error(f"웹 검색 중 오류 발생: {str(e)}", exc_info=True)
-        return []
+    return []
 
 def format_search_results(results: List[Dict[str, str]]) -> str:
     """
