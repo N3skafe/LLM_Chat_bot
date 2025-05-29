@@ -1,0 +1,43 @@
+2025-05-29 16:03:39,212 - multi_agent_chatbot.agent_logic - ERROR - Error during resource cleanup: name 'stop_message_processor' is not defined
+2025-05-29 16:03:39,215 - multi_agent_chatbot.agent_logic - ERROR - Traceback (most recent call last):
+  File "C:\Users\KimDongjune\Documents\LLM_Chat_bot\chat_bot_new\m_agent_chatbot\src\multi_agent_chatbot\agent_logic.py", line 97, in cleanup_resources
+    stop_message_processor()
+    ^^^^^^^^^^^^^^^^^^^^^^
+NameError: name 'stop_message_processor' is not defined
+
+2025-05-29 16:03:52,849 - multi_agent_chatbot.agent_logic - ERROR - Error during resource cleanup: name 'stop_message_processor' is not defined
+2025-05-29 16:03:52,851 - multi_agent_chatbot.agent_logic - ERROR - Traceback (most recent call last):
+  File "C:\Users\KimDongjune\Documents\LLM_Chat_bot\chat_bot_new\m_agent_chatbot\src\multi_agent_chatbot\agent_logic.py", line 97, in cleanup_resources
+    stop_message_processor()
+    ^^^^^^^^^^^^^^^^^^^^^^
+NameError: name 'stop_message_processor' is not defined
+
+2025-05-29 16:10:02,813 - multi_agent_chatbot.agent_logic - ERROR - Error during resource cleanup: name 'stop_message_processor' is not defined
+2025-05-29 16:10:02,815 - multi_agent_chatbot.agent_logic - ERROR - Traceback (most recent call last):
+  File "C:\Users\KimDongjune\Documents\LLM_Chat_bot\chat_bot_new\m_agent_chatbot\src\multi_agent_chatbot\agent_logic.py", line 97, in cleanup_resources
+    stop_message_processor()
+    ^^^^^^^^^^^^^^^^^^^^^^
+NameError: name 'stop_message_processor' is not defined
+
+2025-05-29 16:10:54,242 - multi_agent_chatbot.agent_logic - ERROR - Error during resource cleanup: name 'stop_message_processor' is not defined
+2025-05-29 16:10:54,243 - multi_agent_chatbot.agent_logic - ERROR - Traceback (most recent call last):
+  File "C:\Users\KimDongjune\Documents\LLM_Chat_bot\chat_bot_new\m_agent_chatbot\src\multi_agent_chatbot\agent_logic.py", line 97, in cleanup_resources
+    stop_message_processor()
+    ^^^^^^^^^^^^^^^^^^^^^^
+NameError: name 'stop_message_processor' is not defined
+
+2025-05-29 16:12:13,192 - multi_agent_chatbot.agent_logic - ERROR - Error during resource cleanup: name 'stop_message_processor' is not defined
+2025-05-29 16:12:13,197 - multi_agent_chatbot.agent_logic - ERROR - Traceback (most recent call last):
+  File "C:\Users\KimDongjune\Documents\LLM_Chat_bot\chat_bot_new\m_agent_chatbot\src\multi_agent_chatbot\agent_logic.py", line 97, in cleanup_resources
+    stop_message_processor()
+    ^^^^^^^^^^^^^^^^^^^^^^
+NameError: name 'stop_message_processor' is not defined
+
+2025-05-29 16:29:02,635 - multi_agent_chatbot.agent_logic - ERROR - Web search error: search_web() got an unexpected keyword argument 'timeout'
+2025-05-29 16:35:42,196 - multi_agent_chatbot.agent_logic - ERROR - Web search error: search_web() got an unexpected keyword argument 'timeout'
+2025-05-29 21:30:05,164 - multi_agent_chatbot.agent_logic - ERROR - Web search error: search_web() got an unexpected keyword argument 'timeout'
+2025-05-29 21:36:51,113 - multi_agent_chatbot.agent_logic - ERROR - Web search error: search_web() got an unexpected keyword argument 'timeout'
+2025-05-29 21:48:06,292 - multi_agent_chatbot.agent_logic - ERROR - Web search error: search_web() got an unexpected keyword argument 'timeout'
+2025-05-29 21:49:10,123 - multi_agent_chatbot.agent_logic - ERROR - Web search error: search_web() got an unexpected keyword argument 'timeout'
+2025-05-29 21:59:30,560 - multi_agent_chatbot.agent_logic - ERROR - Web search error: search_web() got an unexpected keyword argument 'timeout'
+2025-05-29 22:01:23,871 - multi_agent_chatbot.agent_logic - ERROR - Web search error: search_web() got an unexpected keyword argument 'timeout'
