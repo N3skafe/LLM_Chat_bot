@@ -1,0 +1,22 @@
+[
+  {
+    "role": "user",
+    "content": "학습된 pdf의 이름을 나열해줘",
+    "timestamp": "2025-05-29T13:47:12.658772"
+  },
+  {
+    "role": "assistant",
+    "content": "학습된 PDF의 구체적인 이름 목록은 제공된 정보에서 확인할 수 없습니다. 관련 자료는 [GitHub 저장소](https://github.com/oreillymedia/data_structures_and_algorithms_using_javascript)에서 확인할 수 있습니다.",
+    "timestamp": "2025-05-29T13:47:12.667795"
+  },
+  {
+    "role": "user",
+    "content": "학습된 pdf의 이름을 나열해줘",
+    "timestamp": "2025-05-29T13:47:12.687945"
+  },
+  {
+    "role": "assistant",
+    "content": "학습된 PDF의 구체적인 이름 목록은 제공된 정보에서 확인할 수 없습니다. 관련 자료는 [GitHub 저장소](https://github.com/oreillymedia/data_structures_and_algorithms_using_javascript)에서 확인할 수 있습니다.",
+    "timestamp": "2025-05-29T13:47:12.688967"
+  }
+]

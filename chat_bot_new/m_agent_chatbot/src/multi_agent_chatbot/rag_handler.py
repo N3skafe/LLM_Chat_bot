@@ -23,8 +23,20 @@ from concurrent.futures import ThreadPoolExecutor, TimeoutError
 from pypdf import PdfReader  # PyPDF2 대신 pypdf 사용
 
 # 로깅 설정
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(),  # 터미널 출력
+        logging.FileHandler('logs/rag_processing.log')  # 파일 출력
+    ]
+)
 logger = logging.getLogger(__name__)
+
+# 로깅 레벨 설정
+logging.getLogger("chromadb").setLevel(logging.WARNING)
+logging.getLogger("langchain").setLevel(logging.WARNING)
+logging.getLogger("sentence_transformers").setLevel(logging.WARNING)
 
 from langchain_community.document_loaders import PyPDFLoader, UnstructuredPDFLoader, PDFPlumberLoader
 from langchain_community.document_loaders.pdf import PyMuPDFLoader
@@ -248,12 +260,14 @@ def is_duplicate_file(file_path: str) -> Optional[str]:
                 return pdf_id
     return None
 
-def update_pdf_status(pdf_id: str, status: str, error_message: Optional[str] = None):
+def update_pdf_status(pdf_id: str, status: str, error_message: Optional[str] = None, progress: Optional[int] = None):
     """Update PDF processing status and save metadata."""
     if pdf_id in pdf_metadata:
         pdf_metadata[pdf_id]["status"] = status
         if error_message:
             pdf_metadata[pdf_id]["error"] = error_message
+        if progress is not None:
+            pdf_metadata[pdf_id]["progress"] = progress
         pdf_metadata[pdf_id]["last_updated"] = datetime.now().isoformat()
         save_pdf_metadata()
 
@@ -505,93 +519,47 @@ def process_with_timeout(func, *args, timeout=MAX_PROCESSING_TIME):
 
 class PDFProcessor:
     def __init__(self):
-        # 로더 순서 최적화: 가장 안정적인 로더를 먼저 시도
         self.loaders = [
-            (PDFPlumberLoader, None),  # 기본 처리
-            (PyMuPDFLoader, None) if fitz else None,  # PyMuPDF 사용 가능한 경우
-            (UnstructuredPDFLoader, None),  # 기본 처리
-            (PyPDFLoader, None)  # 기본 처리
+            PyPDFLoader,
+            UnstructuredPDFLoader,
+            PDFPlumberLoader,
+            PyMuPDFLoader
         ]
-        self.loaders = [loader for loader in self.loaders if loader is not None]
-        
-        # 텍스트 분할 설정
-        self.text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=1000,
-            chunk_overlap=200,
-            length_function=len
-        )
+        self.current_loader_index = 0
 
     def process_pdf(self, file_path: str, original_filename: str = None) -> bool:
-        """PDF 파일을 처리하고 벡터 저장소에 추가합니다."""
+        """PDF를 처리하고 벡터 저장소에 저장합니다."""
         try:
-            if not os.path.exists(file_path):
-                logger.error(f"PDF file not found: {file_path}")
-                return False
-
-            # 파일 유효성 검사
-            is_valid, error_message = validate_pdf(file_path)
-            if not is_valid:
-                logger.error(f"Invalid PDF file: {error_message}")
-                return False
-
-            # 중복 파일 검사
+            # 중복 파일 확인
             if self._is_duplicate_file(file_path, original_filename):
                 logger.info(f"Duplicate file detected: {original_filename}")
                 return True
+
+            # PDF 유효성 검사
+            is_valid, error_msg = validate_pdf(file_path)
+            if not is_valid:
+                logger.error(f"Invalid PDF: {error_msg}")
+                return False
+
+            # 영구 저장소로 복사
+            permanent_file_path = copy_to_permanent_storage(file_path, original_filename)
+            if not permanent_file_path:
+                return False
 
             # PDF ID 생성
             pdf_id = str(uuid.uuid4())
             
             # 메타데이터 업데이트
-            self._update_pdf_metadata(pdf_id, original_filename, file_path)
+            self._update_pdf_metadata(pdf_id, original_filename, permanent_file_path)
             
-            # 진행 상황 업데이트
-            self._update_progress(pdf_id, 0)
+            # 진행 상태 업데이트
+            self._update_progress(pdf_id, 100)
+            
+            logger.info(f"Successfully processed PDF: {original_filename}")
+            return True
 
-            def process_pdf_content():
-                try:
-                    # PDF 처리 시도
-                    documents = []
-                    for loader_class, _ in self.loaders:
-                        try:
-                            loader = loader_class(file_path)
-                            docs = loader.load()
-                            if docs and len(docs) > 0:
-                                documents = docs
-                                break
-                        except Exception as e:
-                            logger.warning(f"Loader {loader_class.__name__} failed: {str(e)}")
-                            continue
-
-                    if not documents:
-                        raise Exception("All PDF loaders failed")
-
-                    # 문서 분할
-                    split_docs = self.text_splitter.split_documents(documents)
-                    
-                    # 벡터 저장소에 추가
-                    if vectorstore is None:
-                        raise Exception("Vector store not initialized")
-                    
-                    # 배치 처리
-                    for i in range(0, len(split_docs), BATCH_SIZE):
-                        batch = split_docs[i:i + BATCH_SIZE]
-                        vectorstore.add_documents(batch)
-                        progress = min(100, (i + len(batch)) * 100 // len(split_docs))
-                        self._update_progress(pdf_id, progress)
-                    
-                    update_pdf_status(pdf_id, "completed")
-                    return True
-                except Exception as e:
-                    error_message = f"PDF processing failed: {str(e)}"
-                    logger.error(error_message)
-                    update_pdf_status(pdf_id, "failed", error_message)
-                    return False
-
-            # 타임아웃 처리
-            return process_with_timeout(process_pdf_content, timeout=MAX_PROCESSING_TIME)
         except Exception as e:
-            logger.error(f"Unexpected error in process_pdf: {str(e)}")
+            logger.error(f"Error processing PDF: {str(e)}")
             return False
 
     def _is_duplicate_file(self, file_path: str, original_filename: str) -> bool:
@@ -632,8 +600,94 @@ class PDFProcessor:
 pdf_processor = PDFProcessor()
 
 def process_and_embed_pdf(temp_file_path: str, original_filename: str = None) -> bool:
-    """PDF 파일을 처리하고 벡터 저장소에 추가합니다."""
-    return pdf_processor.process_pdf(temp_file_path, original_filename)
+    """PDF를 처리하고 벡터 저장소에 임베딩합니다."""
+    pdf_id = None
+    try:
+        logger.info(f"Starting PDF processing: {original_filename}")
+        
+        # RAG 시스템 초기화 확인
+        if vectorstore is None:
+            logger.info("Initializing RAG system...")
+            initialize_rag_system()
+            if vectorstore is None:
+                raise Exception("Failed to initialize vectorstore")
+            logger.info("RAG system initialized successfully")
+
+        # PDF 처리
+        logger.info(f"Processing PDF file: {original_filename}")
+        processor = PDFProcessor()
+        success = processor.process_pdf(temp_file_path, original_filename)
+        
+        if not success:
+            logger.error(f"Failed to process PDF: {original_filename}")
+            return False
+
+        # 영구 저장소의 파일 경로 가져오기
+        for pid, info in pdf_index.items():
+            if info["filename"] == original_filename:
+                pdf_id = pid
+                break
+
+        if not pdf_id:
+            logger.error(f"Could not find PDF ID for {original_filename}")
+            return False
+
+        permanent_file_path = pdf_index[pdf_id]["path"]
+        if not os.path.exists(permanent_file_path):
+            logger.error(f"Permanent file not found: {permanent_file_path}")
+            return False
+
+        # PDF 로드 및 텍스트 추출
+        logger.info(f"Loading PDF content: {original_filename}")
+        loader = PyPDFLoader(permanent_file_path)
+        documents = loader.load()
+        
+        if not documents:
+            logger.error(f"No content extracted from PDF: {original_filename}")
+            update_pdf_status(pdf_id, "failed", "No content extracted")
+            return False
+
+        # 텍스트 분할
+        logger.info(f"Splitting text into chunks: {original_filename}")
+        splits = text_splitter.split_documents(documents)
+        
+        if not splits:
+            logger.error(f"No text splits created from PDF: {original_filename}")
+            update_pdf_status(pdf_id, "failed", "No text splits created")
+            return False
+
+        # 벡터 저장소에 추가
+        try:
+            logger.info(f"Adding documents to vector store: {original_filename}")
+            # 배치 처리
+            total_chunks = len(splits)
+            for i in range(0, total_chunks, BATCH_SIZE):
+                batch = splits[i:i + BATCH_SIZE]
+                vectorstore.add_documents(batch)
+                progress = min(100, (i + len(batch)) * 100 // total_chunks)
+                update_pdf_status(pdf_id, "processing", progress=progress)
+                logger.info(f"Processed {i + len(batch)}/{total_chunks} chunks ({progress}%)")
+            
+            # 변경사항 저장
+            logger.info("Persisting changes to vector store...")
+            vectorstore.persist()
+            
+            # 상태 업데이트
+            update_pdf_status(pdf_id, "processed", progress=100)
+            logger.info(f"Successfully processed and embedded PDF: {original_filename}")
+            return True
+
+        except Exception as e:
+            error_msg = f"Error adding documents to vectorstore: {str(e)}"
+            logger.error(error_msg)
+            update_pdf_status(pdf_id, "failed", error_msg)
+            return False
+
+    except Exception as e:
+        logger.error(f"Error in process_and_embed_pdf: {str(e)}")
+        if pdf_id:
+            update_pdf_status(pdf_id, "failed", str(e))
+        return False
 
 class RAGManager:
     def __init__(self):
@@ -693,21 +747,44 @@ rag_manager = RAGManager()
 
 def get_relevant_documents(query: str, k: int = 5) -> List[Document]:
     """쿼리와 관련된 문서를 검색합니다."""
-    return rag_manager.get_relevant_documents(query, k)
+    try:
+        # RAG 시스템 초기화 확인
+        if vectorstore is None:
+            initialize_rag_system()
+            if vectorstore is None:
+                raise Exception("Failed to initialize vectorstore")
+
+        # 검색 수행
+        results = vectorstore.similarity_search(query, k=k)
+        logger.info(f"Found {len(results)} relevant documents for query: {query}")
+        return results
+    except Exception as e:
+        logger.error(f"Error in get_relevant_documents: {str(e)}")
+        return []
 
 def query_pdf_content(query: str, k: int = 5) -> str:
     """PDF 내용을 쿼리하고 결과를 반환합니다."""
     try:
-        documents = get_relevant_documents(query, k)
-        if not documents:
-            return "관련 문서를 찾을 수 없습니다."
+        # RAG 시스템 초기화 확인
+        if vectorstore is None:
+            initialize_rag_system()
+            if vectorstore is None:
+                return "RAG 시스템이 초기화되지 않았습니다. PDF를 다시 업로드해주세요."
+
+        # 관련 문서 검색
+        docs = get_relevant_documents(query, k=k)
+        if not docs:
+            return "관련된 내용을 찾을 수 없습니다."
+
+        # 결과 포맷팅
+        results = []
+        for i, doc in enumerate(docs, 1):
+            results.append(f"[{i}] {doc.page_content}")
         
-        # 문서 내용 결합
-        content = "\n\n".join(doc.page_content for doc in documents)
-        return content
+        return "\n\n".join(results)
     except Exception as e:
-        logger.error(f"Failed to query PDF content: {str(e)}")
-        return f"문서 검색 중 오류가 발생했습니다: {str(e)}"
+        logger.error(f"Error in query_pdf_content: {str(e)}")
+        return f"PDF 내용 검색 중 오류가 발생했습니다: {str(e)}"
 
 def get_processed_pdfs() -> List[Dict]:
     """처리된 PDF 파일 목록을 반환합니다."""
@@ -950,58 +1027,101 @@ def cleanup_failed_files(original_filename: str):
         return 0 
 
 def initialize_rag_system():
-    """RAG 시스템을 초기화합니다."""
-    global vectorstore
+    """RAG 시스템을 초기화하고 상태를 확인합니다."""
     try:
-        # 디렉토리 생성
+        # 디렉토리 존재 확인 및 생성
         for path in [DATA_DIR, Path(BASE_CHROMA_DB_PATH), Path(PDF_STORAGE_PATH)]:
-            path.mkdir(parents=True, exist_ok=True)
-            logger.info(f"Created directory: {path}")
+            try:
+                path.mkdir(parents=True, exist_ok=True)
+                logger.info(f"Directory checked/created: {path}")
+            except Exception as e:
+                logger.error(f"Failed to create directory {path}: {str(e)}")
+                raise
 
         # 메타데이터 파일 초기화
-        for path in [PDF_METADATA_PATH, PDF_INDEX_PATH]:
-            if not os.path.exists(path):
-                with open(path, 'w', encoding='utf-8') as f:
-                    json.dump({}, f)
-                logger.info(f"Created empty metadata file: {path}")
-
-        # 메타데이터와 인덱스 로드
-        load_pdf_metadata()
-        load_pdf_index()
+        try:
+            load_pdf_metadata()
+            load_pdf_index()
+            logger.info("PDF metadata and index loaded successfully")
+        except Exception as e:
+            logger.error(f"Failed to load metadata: {str(e)}")
+            # 메타데이터 파일 재생성 시도
+            try:
+                for path in [PDF_METADATA_PATH, PDF_INDEX_PATH]:
+                    with open(path, 'w', encoding='utf-8') as f:
+                        json.dump({}, f)
+                logger.info("Created new metadata files")
+            except Exception as e:
+                logger.error(f"Failed to create metadata files: {str(e)}")
+                raise
 
         # ChromaDB 초기화
+        global vectorstore
         try:
-            vectorstore = Chroma(
-                persist_directory=BASE_CHROMA_DB_PATH,
-                embedding_function=embeddings,
-                collection_name="rag_collection"
-            )
-            logger.info("ChromaDB initialized successfully")
+            if vectorstore is None:
+                # 기존 ChromaDB 디렉토리 확인
+                if os.path.exists(BASE_CHROMA_DB_PATH):
+                    # 기존 데이터베이스가 손상되었을 수 있으므로 백업
+                    backup_dir = Path(BASE_CHROMA_DB_PATH).parent / "chroma_backups"
+                    backup_dir.mkdir(exist_ok=True)
+                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    backup_path = backup_dir / f"chroma_db_{timestamp}"
+                    try:
+                        shutil.copytree(BASE_CHROMA_DB_PATH, backup_path)
+                        logger.info(f"Backed up existing ChromaDB to {backup_path}")
+                    except Exception as e:
+                        logger.warning(f"Failed to backup ChromaDB: {str(e)}")
+
+                # 새로운 ChromaDB 초기화
+                vectorstore = Chroma(
+                    persist_directory=BASE_CHROMA_DB_PATH,
+                    embedding_function=embeddings,
+                    collection_name="rag_collection"
+                )
+                logger.info("ChromaDB initialized successfully")
         except Exception as e:
             logger.error(f"Failed to initialize ChromaDB: {str(e)}")
-            # ChromaDB 디렉토리가 손상되었을 수 있으므로 재생성
-            if os.path.exists(BASE_CHROMA_DB_PATH):
-                shutil.rmtree(BASE_CHROMA_DB_PATH)
-            os.makedirs(BASE_CHROMA_DB_PATH, exist_ok=True)
-            # 다시 초기화 시도
-            vectorstore = Chroma(
-                persist_directory=BASE_CHROMA_DB_PATH,
-                embedding_function=embeddings,
-                collection_name="rag_collection"
-            )
-            logger.info("ChromaDB reinitialized successfully")
+            # ChromaDB 디렉토리 정리 후 재시도
+            try:
+                if os.path.exists(BASE_CHROMA_DB_PATH):
+                    shutil.rmtree(BASE_CHROMA_DB_PATH)
+                os.makedirs(BASE_CHROMA_DB_PATH)
+                vectorstore = Chroma(
+                    persist_directory=BASE_CHROMA_DB_PATH,
+                    embedding_function=embeddings,
+                    collection_name="rag_collection"
+                )
+                logger.info("ChromaDB reinitialized after cleanup")
+            except Exception as e:
+                logger.error(f"Failed to reinitialize ChromaDB: {str(e)}")
+                raise
 
-        # RAGManager 초기화
-        global rag_manager
-        rag_manager = RAGManager()
-        rag_manager.vectorstore = vectorstore
-        logger.info("RAGManager initialized successfully")
+        # 데이터베이스 상태 확인
+        try:
+            status = get_database_status()
+            logger.info(f"Database status: {status}")
+            
+            # 컬렉션 존재 확인
+            collections = list_available_collections()
+            if "rag_collection" not in collections:
+                logger.warning("rag_collection not found, creating new collection")
+                vectorstore = Chroma(
+                    persist_directory=BASE_CHROMA_DB_PATH,
+                    embedding_function=embeddings,
+                    collection_name="rag_collection"
+                )
+        except Exception as e:
+            logger.error(f"Failed to verify database status: {str(e)}")
+            raise
 
         return True
     except Exception as e:
         logger.error(f"Failed to initialize RAG system: {str(e)}")
         return False
 
-# 초기화 코드를 함수로 이동하고 호출
-if not initialize_rag_system():
-    raise RuntimeError("데이터베이스 초기화에 실패했습니다.") 
+# 초기화 코드 수정
+try:
+    if not initialize_rag_system():
+        logger.error("Failed to initialize RAG system")
+except Exception as e:
+    logger.error(f"Error during RAG system initialization: {str(e)}") 

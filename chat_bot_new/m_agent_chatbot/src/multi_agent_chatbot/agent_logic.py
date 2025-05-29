@@ -275,7 +275,7 @@ def route_query_node(state: AgentState) -> AgentState:
         return {"selected_agent": "image_analysis_route"}
 
     # RAG 사용 여부 판단 (PDF 문서 검색)
-    if any(kw in query for kw in ["pdf", "문서", "내 파일", "내 자료", "찾아줘", "검색", "요약"]):
+    if any(kw in query for kw in ["pdf", "문서", "내 파일", "내 자료", "찾아줘", "요약"]):
         logger.info("Routing to RAG")
         return {"selected_agent": "rag"}
 
@@ -284,7 +284,7 @@ def route_query_node(state: AgentState) -> AgentState:
         # 시간 관련
         "현재", "지금", "요즘", "최근", "이번", "올해", "작년", "내년",
         # 상태/상황 관련
-        "상태", "상황", "동향", "트렌드", "뉴스", "소식", "정보",
+        "상태", "상황", "동향", "트렌드", "뉴스", "소식", "정보", "검색",
         # 특정 주제
         "가격", "시세", "환율", "주식", "날씨", "기후",
         # 영어 키워드
@@ -382,7 +382,7 @@ def web_search_node(state: AgentState) -> AgentState:
     logger.info(f"Performing web search for: {query}")
     
     try:
-        search_results = search_web(query, timeout=10)  # 10초 타임아웃 설정
+        search_results = search_web(query)  # timeout 매개변수 제거
         if not search_results:
             logger.warning("No web search results found")
             return {

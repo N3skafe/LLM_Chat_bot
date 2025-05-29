@@ -41,3 +41,4 @@ NameError: name 'stop_message_processor' is not defined
 2025-05-29 21:49:10,123 - multi_agent_chatbot.agent_logic - ERROR - Web search error: search_web() got an unexpected keyword argument 'timeout'
 2025-05-29 21:59:30,560 - multi_agent_chatbot.agent_logic - ERROR - Web search error: search_web() got an unexpected keyword argument 'timeout'
 2025-05-29 22:01:23,871 - multi_agent_chatbot.agent_logic - ERROR - Web search error: search_web() got an unexpected keyword argument 'timeout'
+2025-05-29 22:18:34,573 - multi_agent_chatbot.agent_logic - ERROR - Web search error: search_web() got an unexpected keyword argument 'timeout'

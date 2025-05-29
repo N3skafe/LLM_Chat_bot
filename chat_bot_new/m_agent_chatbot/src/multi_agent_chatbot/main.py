@@ -55,7 +55,8 @@ from multi_agent_chatbot.rag_handler import (
     cleanup_old_databases,
     RAGManager,
     rag_manager,
-    query_pdf_content
+    query_pdf_content,
+    get_processed_pdfs
 )
 
 # 이미지 캐싱을 위한 함수
@@ -763,6 +764,46 @@ def get_ai_response(prompt: str) -> str:
         logger.error(error_msg)
         return f"죄송합니다. 응답을 생성하는 중에 오류가 발생했습니다. 오류 내용: {str(e)}"
 
+def process_multiple_pdfs(files_to_process):
+    """여러 PDF 파일을 처리합니다."""
+    results = []
+    for filename, content in files_to_process:
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp_file:
+            tmp_file.write(content)
+            temp_file_path = tmp_file.name
+
+        try:
+            # PDF 파일 검증
+            is_valid, error_message = validate_pdf(temp_file_path)
+            if not is_valid:
+                results.append(f"'{filename}' 파일 검증 실패: {error_message}")
+                continue
+
+            # PDF 처리
+            success = process_and_embed_pdf(temp_file_path, filename)
+            if success:
+                results.append(f"'{filename}' 파일이 성공적으로 처리되어 RAG DB에 추가되었습니다.")
+            else:
+                # 실패 원인 확인
+                pdf_id = None
+                for pid, info in rag_manager.pdf_metadata.items():
+                    if info["filename"] == filename and info["status"] == "failed":
+                        pdf_id = pid
+                        break
+                
+                if pdf_id and "error" in rag_manager.pdf_metadata[pdf_id]:
+                    results.append(f"'{filename}' 파일 처리 실패: {rag_manager.pdf_metadata[pdf_id]['error']}")
+                else:
+                    results.append(f"'{filename}' 파일 처리 중 알 수 없는 오류가 발생했습니다.")
+        except Exception as e:
+            results.append(f"'{filename}' 파일 처리 중 오류가 발생했습니다: {str(e)}")
+        finally:
+            try:
+                os.unlink(temp_file_path)
+            except:
+                pass  # 임시 파일 삭제 실패는 무시
+    return results
+
 def main():
     try:
         # 세션 상태 초기화
@@ -800,7 +841,22 @@ def main():
                     files_to_process = [(f.name, f.getvalue()) for f in pdf_files]
                     
                     # 여러 PDF 처리
-                    # results = process_multiple_pdfs(files_to_process)
+                    results = process_multiple_pdfs(files_to_process)
+                    
+                    # 결과 표시
+                    for result in results:
+                        if "성공" in result:
+                            st.success(result)
+                        else:
+                            st.error(result)
+            
+            # 처리된 PDF 목록 표시
+            processed_pdfs = get_processed_pdfs()
+            if processed_pdfs:
+                st.markdown("### 처리된 PDF 목록")
+                for pdf in processed_pdfs:
+                    status_color = "green" if pdf["status"] == "processed" else "red"
+                    st.markdown(f"- {pdf['filename']} <span style='color:{status_color}'>({pdf['status']})</span>", unsafe_allow_html=True)
             
             st.markdown('</div>', unsafe_allow_html=True)
 

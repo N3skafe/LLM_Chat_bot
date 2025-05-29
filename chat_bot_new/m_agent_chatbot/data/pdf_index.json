@@ -3,5 +3,30 @@
     "id": "88532dd4-1309-4dad-9271-29f7d5be1435",
     "filename": "Data-Structures-&-Algorithms-with-JavaScript.pdf",
     "path": "C:\\Users\\KimDongjune\\Documents\\LLM_Chat_bot\\chat_bot_new\\m_agent_chatbot\\data\\pdfs\\0c03576d-4e2e-43e6-9c50-fefa518c2ee0_Data-Structures-&-Algorithms-with-JavaScript.pdf"
+  },
+  "079a5779-c2ad-4357-9aa9-83a9e187b7d5": {
+    "id": "079a5779-c2ad-4357-9aa9-83a9e187b7d5",
+    "filename": "Data Science from Scratch- First Principles with Python.pdf",
+    "path": "F:\\LLM_Chat_bot\\chat_bot_new\\m_agent_chatbot\\data\\pdfs\\f135c6d7-9560-4925-8b75-a354ac7bda63_Data Science from Scratch- First Principles with Python.pdf"
+  },
+  "fcc9a979-a3c2-4dd5-9421-d8fc1f21b18e": {
+    "id": "fcc9a979-a3c2-4dd5-9421-d8fc1f21b18e",
+    "filename": "Machine Learning Q and AI (Sebastian Raschka, PhD) (Z-Library).pdf",
+    "path": "F:\\LLM_Chat_bot\\chat_bot_new\\m_agent_chatbot\\data\\pdfs\\f52a0f9e-6c2a-4b09-85ee-02391cf6277a_Machine Learning Q and AI (Sebastian Raschka, PhD) (Z-Library).pdf"
+  },
+  "0684ce28-ffd9-45f9-9a44-ea8fa835b22a": {
+    "id": "0684ce28-ffd9-45f9-9a44-ea8fa835b22a",
+    "filename": "Prompt_Engineering_Google.pdf",
+    "path": "F:\\LLM_Chat_bot\\chat_bot_new\\m_agent_chatbot\\data\\pdfs\\35220ec3-d40f-4542-ac24-f195f9b5d2ec_Prompt_Engineering_Google.pdf"
+  },
+  "05d0767b-9145-4b0c-915a-9ba63a62b557": {
+    "id": "05d0767b-9145-4b0c-915a-9ba63a62b557",
+    "filename": "a-practical-guide-to-building-agents.pdf",
+    "path": "F:\\LLM_Chat_bot\\chat_bot_new\\m_agent_chatbot\\data\\pdfs\\4839acd5-d907-4e5e-b7b2-c7a37a3fea58_a-practical-guide-to-building-agents.pdf"
+  },
+  "52fa8ce5-29a6-4c68-b969-b0bac2a8e6d8": {
+    "id": "52fa8ce5-29a6-4c68-b969-b0bac2a8e6d8",
+    "filename": "Weaviate Agentic Architectures-ebook.pdf",
+    "path": "F:\\LLM_Chat_bot\\chat_bot_new\\m_agent_chatbot\\data\\pdfs\\d96978f9-5025-4fea-82be-94cac0db922f_Weaviate Agentic Architectures-ebook.pdf"
   }
 }

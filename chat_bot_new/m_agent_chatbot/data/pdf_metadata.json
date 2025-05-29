@@ -5,5 +5,40 @@
     "status": "processed",
     "progress": 100,
     "last_updated": "2025-05-29T12:38:51.271717"
+  },
+  "079a5779-c2ad-4357-9aa9-83a9e187b7d5": {
+    "filename": "Data Science from Scratch- First Principles with Python.pdf",
+    "upload_time": "2025-05-30T01:02:41.945283",
+    "status": "processed",
+    "progress": 100,
+    "last_updated": "2025-05-30T02:50:11.627584"
+  },
+  "fcc9a979-a3c2-4dd5-9421-d8fc1f21b18e": {
+    "filename": "Machine Learning Q and AI (Sebastian Raschka, PhD) (Z-Library).pdf",
+    "upload_time": "2025-05-30T01:55:01.582609",
+    "status": "processed",
+    "progress": 100,
+    "last_updated": "2025-05-30T03:04:57.357707"
+  },
+  "0684ce28-ffd9-45f9-9a44-ea8fa835b22a": {
+    "filename": "Prompt_Engineering_Google.pdf",
+    "upload_time": "2025-05-30T02:09:49.582392",
+    "status": "processed",
+    "progress": 100,
+    "last_updated": "2025-05-30T03:09:12.132478"
+  },
+  "05d0767b-9145-4b0c-915a-9ba63a62b557": {
+    "filename": "a-practical-guide-to-building-agents.pdf",
+    "upload_time": "2025-05-30T02:14:05.020701",
+    "status": "processed",
+    "progress": 100,
+    "last_updated": "2025-05-30T03:11:10.251818"
+  },
+  "52fa8ce5-29a6-4c68-b969-b0bac2a8e6d8": {
+    "filename": "Weaviate Agentic Architectures-ebook.pdf",
+    "upload_time": "2025-05-30T02:16:03.451378",
+    "status": "processed",
+    "progress": 100,
+    "last_updated": "2025-05-30T03:12:37.080066"
   }
 }
