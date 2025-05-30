@@ -658,6 +658,21 @@ def handle_specialized_request(prompt: str, request_type: str) -> str:
         "웹 검색": "정보 검색 및 요약"
     }
     
+    # 적금 상품 관련 요청인 경우 PDF 검색 우선 수행
+    if request_type == "적금 상품":
+        try:
+            # PDF에서 관련 정보 검색
+            relevant_docs = get_relevant_documents(prompt, k=3)
+            if relevant_docs:
+                context = "\n\n".join([doc.page_content for doc in relevant_docs])
+                # PDF 검색 결과를 포함하여 응답 생성
+                return get_specialized_response(f"다음은 PDF 문서에서 찾은 정보입니다:\n{context}\n\n이 정보를 바탕으로 {prompt}", "금융 상품 및 투자")
+            else:
+                logger.info("No relevant PDF documents found for financial product query")
+        except Exception as e:
+            logger.error(f"Error searching PDF for financial product: {str(e)}")
+    
+    # 일반적인 처리
     context = context_map.get(request_type, "일반 상담")
     return get_specialized_response(prompt, context)
 
