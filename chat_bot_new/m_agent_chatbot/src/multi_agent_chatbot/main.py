@@ -726,7 +726,7 @@ def handle_conversation_starter(starter_text):
     st.session_state.messages.append({"role": "assistant", "content": starter_text})
     return starter_text
 
-def get_ai_response(prompt: str) -> str:
+def get_ai_response(prompt: str, image: Optional[Image.Image] = None) -> str:
     """AI 응답 생성"""
     try:
         # 대화 스타터 관련 키워드 확인
@@ -757,7 +757,7 @@ def get_ai_response(prompt: str) -> str:
                 return response
         
         # 일반 대화 처리
-        return run_graph(prompt, [(m["content"], "") for m in st.session_state.messages if m["role"] == "user"])
+        return run_graph(prompt, [(m["content"], "") for m in st.session_state.messages if m["role"] == "user"], image_pil=image)
         
     except Exception as e:
         error_msg = f"AI 응답 생성 중 오류 발생: {str(e)}"
@@ -1108,7 +1108,7 @@ def main():
             # 챗봇 응답 생성
             with st.spinner("생각 중..."):
                 try:
-                    response = get_ai_response(prompt)
+                    response = get_ai_response(prompt, image=image)
                     # 스트리밍 응답
                     full_response = stream_response(response)
                     st.session_state.messages.append({"role": "assistant", "content": full_response})

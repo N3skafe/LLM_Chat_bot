@@ -243,7 +243,7 @@ logger = setup_logging()
 
 from .llm_config import AVAILABLE_MODELS, llm_general, llm_coding, llm_reasoning, llm_image
 from .rag_handler import get_relevant_documents, query_pdf_content
-from .image_handler import analyze_image_with_llm
+from .image_handler import analyze_image_with_llm, extract_text_from_image
 from .web_search import search_web, format_search_results
 from PIL import Image
 
@@ -264,13 +264,13 @@ class AgentState(TypedDict):
 def route_query_node(state: AgentState) -> AgentState:
     """쿼리 유형에 따라 다음 노드를 결정합니다."""
     query = state["input_query"].lower()
-    image_data = state["image_data"]
+    image_data = state.get("image_data")
     
     logger.info(f"Routing query: {query}")
     logger.debug(f"Image data present: {bool(image_data)}")
     
     # 이미지 분석이 우선순위가 높을 경우
-    if image_data:
+    if image_data is not None:
         logger.info("Routing to image analysis")
         return {"selected_agent": "image_analysis_route"}
 
@@ -308,7 +308,7 @@ def route_query_node(state: AgentState) -> AgentState:
 
 def image_analysis_node(state: AgentState) -> AgentState:
     """이미지를 분석하고 결과를 상태에 저장합니다."""
-    image = state["image_data"]
+    image = state.get("image_data")
     query = state["input_query"]
     
     logger.info("Processing image analysis request")
@@ -322,7 +322,25 @@ def image_analysis_node(state: AgentState) -> AgentState:
     
     logger.info(f"Analyzing image with prompt: {analysis_prompt}")
     try:
-        analysis_result = analyze_image_with_llm(image, analysis_prompt)
+        # 이미지 텍스트 추출 시도
+        extracted_text = extract_text_from_image(image)
+        if extracted_text and extracted_text.strip():
+            logger.info(f"Extracted text from image: {extracted_text[:200]}...")
+            analysis_prompt = f"이미지에서 추출된 텍스트: {extracted_text}\n\n{analysis_prompt}"
+        else:
+            logger.info("No text extracted from image or OCR failed.")
+        
+        # 이미지 분석 수행
+        analysis_result, error = analyze_image_with_llm(image, analysis_prompt)
+        
+        if error or not analysis_result or not analysis_result.strip():
+            logger.error(f"Image analysis error: {error if error else '분석 결과 없음'}")
+            return {
+                "output_message": "이미지에서 텍스트를 추출하거나 분석하는 데 실패했습니다. 이미지가 명확한지 확인해 주세요.",
+                "image_analysis_result": None,
+                "intermediate_steps": state.get("intermediate_steps", []) + [f"Image analysis error: {error if error else '분석 결과 없음'}"]
+            }
+        
         logger.info("Image analysis completed successfully")
         logger.debug(f"Analysis result: {analysis_result[:200]}...")
         
@@ -342,7 +360,7 @@ def image_analysis_node(state: AgentState) -> AgentState:
         state["image_data"] = None
         gc.collect()
         return {
-            "output_message": error_msg,
+            "output_message": "이미지에서 텍스트를 추출하거나 분석하는 데 실패했습니다. 이미지가 명확한지 확인해 주세요.",
             "image_analysis_result": None,
             "intermediate_steps": state.get("intermediate_steps", []) + [f"Image analysis error: {str(e)}"]
         }
@@ -682,8 +700,12 @@ def llm_call_node(state: AgentState) -> AgentState:
         agent_name = state["selected_agent"]
         query = state["input_query"]
         history = state["chat_history"]
-        rag_context = state.get("rag_context")
         image_analysis_context = state.get("image_analysis_result")
+        # 이미지 분석 결과가 있으면 rag_context는 사용하지 않음
+        if image_analysis_context:
+            rag_context = None
+        else:
+            rag_context = state.get("rag_context")
         web_search_context = state.get("web_search_results")
 
         # 현재 시간 포함
@@ -704,15 +726,15 @@ def llm_call_node(state: AgentState) -> AgentState:
         system_prompt = f"""현재 시간은 {now}입니다.\n당신은 사용자와 대화하는 AI 챗봇입니다. 다음 규칙을 따라주세요:\n\n1. 기본 응답 원칙:\n   - 사용자의 질문에 직접적으로 답변하세요\n   - 내부 생각이나 분석 과정을 출력하지 마세요\n   - 불필요한 주어(\"제가\", \"저는\" 등)를 사용하지 마세요\n   - 영어로 된 내부 생각을 출력하지 마세요\n\n2. 검색 결과 활용:\n   - 웹 검색이나 PDF 검색 결과가 있다면, 그 정보를 바탕으로 답변하세요\n   - 검색 결과를 자연스럽게 답변에 포함시키되, 출처를 명시하세요\n   - 예시: \"최근 뉴스에 따르면 [검색 결과 내용]입니다.\"\n   - 검색 결과가 없는 경우: \"관련 정보를 찾지 못했습니다.\"\n\n3. 정보 부족 시:\n   - 구체적으로 어떤 정보가 부족한지 알려주세요\n   - 예시: \"현재 날씨 정보가 필요합니다.\"\n   - 추가 정보를 요청할 때는 간단명료하게 하세요\n\n4. 오류 발생 시:\n   - 구체적인 오류 내용을 알려주세요\n   - 예시: \"이미지 분석 중 오류가 발생했습니다: 이미지 형식이 지원되지 않습니다.\"\n\n5. 인사 처리:\n   - 인사에는 간단한 인사로만 응답하세요\n   - 예시: \"안녕하세요\", \"반갑습니다\"\n\n6. 답변 형식:\n   - 검색 결과가 있는 경우:\n     * \"검색 결과에 따르면 [답변 내용]입니다.\"\n     * \"최근 정보에 의하면 [답변 내용]입니다.\"\n   - 일반 답변의 경우:\n     * 간단명료하게 직접 답변하세요\n   - 정보 부족 시:\n     * \"답변을 위해 [필요한 정보]가 필요합니다.\"\n   - 오류 발생 시:\n     * \"오류가 발생했습니다: [구체적인 오류 내용]\" """
 
         # 컨텍스트가 있는 경우 시스템 프롬프트에 추가
-        if rag_context or image_analysis_context or web_search_context:
+        if image_analysis_context or web_search_context or rag_context:
             contexts = []
             if image_analysis_context:
                 contexts.append(f"이미지 분석: {image_analysis_context}")
-            if rag_context:
+            # 이미지 분석이 있으면 rag_context는 무시
+            elif rag_context:
                 contexts.append(f"문서 내용: {rag_context}")
             if web_search_context:
                 contexts.append(f"웹 검색: {web_search_context}")
-            
             system_prompt += f"\n\n참고할 정보:\n{' '.join(contexts)}"
 
         # 프롬프트 구성

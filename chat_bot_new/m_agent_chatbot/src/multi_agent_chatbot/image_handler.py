@@ -13,9 +13,16 @@ from pathlib import Path
 import requests
 import json
 import time
+import platform
+import re
 
-# Tesseract 경로 설정
-pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
+# 운영체제에 따른 Tesseract 경로 설정
+if platform.system() == 'Windows':
+    pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
+elif platform.system() == 'Darwin':  # macOS
+    pytesseract.pytesseract.tesseract_cmd = '/usr/local/bin/tesseract'
+else:  # Linux
+    pytesseract.pytesseract.tesseract_cmd = '/usr/bin/tesseract'
 
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
@@ -67,18 +74,35 @@ def convert_image_format(image: Image.Image) -> Image.Image:
 
 def optimize_image(image: Image.Image) -> Image.Image:
     """
-    이미지를 최적화하여 처리 속도를 향상시킵니다.
+    이미지를 최적화하여 OCR 성능을 향상시킵니다.
     """
     try:
         # 이미지 형식 변환
         image = convert_image_format(image)
         
         # 이미지 크기 최적화
-        max_size = 600
+        max_size = 2000
         if max(image.size) > max_size:
             ratio = max_size / max(image.size)
             new_size = tuple(int(dim * ratio) for dim in image.size)
             image = image.resize(new_size, Image.Resampling.LANCZOS)
+        
+        # 이미지 전처리
+        # 1. 그레이스케일 변환
+        image = image.convert('L')
+        
+        # 2. 대비 향상
+        image = ImageEnhance.Contrast(image).enhance(2.0)
+        
+        # 3. 선명도 향상
+        image = ImageEnhance.Sharpness(image).enhance(1.5)
+        
+        # 4. 노이즈 제거
+        image = image.filter(ImageFilter.MedianFilter(size=3))
+        
+        # 5. 이진화 (Otsu's method)
+        threshold = ImageFilter.FIND_EDGES
+        image = image.filter(threshold)
         
         return image
     except Exception as e:
@@ -93,12 +117,22 @@ def extract_text_from_image(image: Image.Image) -> str:
         # 이미지 최적화
         optimized_image = optimize_image(image)
         
-        # OCR 설정 (빠른 모드)
-        custom_config = r'--oem 1 --psm 6 -l kor+eng'
+        # OCR 설정 최적화
+        custom_config = r'--oem 1 --psm 6 -l kor+eng --dpi 300'
         
         # OCR 수행
-        text = pytesseract.image_to_string(optimized_image, config=custom_config)
-        return text.strip()
+        text = pytesseract.image_to_string(
+            optimized_image,
+            config=custom_config,
+            lang='kor+eng'
+        )
+        
+        # 결과 후처리
+        text = text.strip()
+        text = re.sub(r'\s+', ' ', text)  # 여러 공백을 하나로
+        text = re.sub(r'[^\w\s가-힣]', '', text)  # 특수문자 제거
+        
+        return text
     except Exception as e:
         logger.error(f"텍스트 추출 중 오류 발생: {str(e)}")
         return ""
@@ -144,22 +178,51 @@ def analyze_image_with_llm(image_path_or_image: Union[str, Image.Image], query: 
         Tuple[str, str]: (분석 결과, 오류 메시지)
     """
     try:
-        # PIL Image 객체인 경우 base64로 직접 인코딩
+        # 이미지 포맷 및 base64 인코딩
         if isinstance(image_path_or_image, Image.Image):
+            if not hasattr(image_path_or_image, 'format') or image_path_or_image.format is None:
+                format = 'PNG'
+            else:
+                format = image_path_or_image.format
             buffered = io.BytesIO()
-            image_path_or_image.save(buffered, format="PNG")
-            base64_image = base64.b64encode(buffered.getvalue()).decode('utf-8')
+            image_path_or_image.save(buffered, format=format)
+            img_bytes = buffered.getvalue()
+            mime = 'png' if format.lower() == 'png' else 'jpeg'
+        elif isinstance(image_path_or_image, str):
+            ext = os.path.splitext(image_path_or_image)[-1].lower()
+            mime = 'png' if ext == '.png' else 'jpeg'
+            with open(image_path_or_image, 'rb') as f:
+                img_bytes = f.read()
         else:
-            # 이미지 파일 경로인 경우 파일에서 읽어서 인코딩
-            base64_image = encode_image_to_base64(image_path_or_image)
-            
-        if not base64_image:
-            return "", "이미지 인코딩에 실패했습니다."
+            logger.error(f"Invalid image input type: {type(image_path_or_image)}")
+            return "", "지원하지 않는 이미지 타입입니다."
+
+        # 이미지 크기 제한 (1MB)
+        if len(img_bytes) > 1024 * 1024:
+            logger.warning(f"Image size too large ({len(img_bytes)} bytes), resizing...")
+            try:
+                image = Image.open(io.BytesIO(img_bytes))
+                max_size = 1024
+                if max(image.size) > max_size:
+                    ratio = max_size / max(image.size)
+                    new_size = tuple(int(dim * ratio) for dim in image.size)
+                    image = image.resize(new_size, Image.Resampling.LANCZOS)
+                buffered = io.BytesIO()
+                image.save(buffered, format=image.format or 'PNG')
+                img_bytes = buffered.getvalue()
+                logger.info(f"Resized image size: {len(img_bytes)} bytes")
+            except Exception as e:
+                logger.error(f"Image resize failed: {str(e)}")
+                return "", "이미지 크기 조정에 실패했습니다."
+
+        base64_image = base64.b64encode(img_bytes).decode('utf-8')
+        image_url = f"data:image/{mime};base64,{base64_image}"
+        logger.info(f"Image URL prefix: {image_url[:30]}... (base64 length: {len(base64_image)}) | mime: {mime}")
+        if len(base64_image) < 100:
+            logger.warning("Base64 image string is suspiciously short. Check image encoding.")
 
         # 시스템 프롬프트 설정
-        system_prompt = """당신은 이미지 분석 전문가입니다. 주어진 이미지를 자세히 분석하고 설명해주세요.
-        이미지에 있는 텍스트, 객체, 사람, 장면 등을 모두 포함하여 설명해주세요.
-        가능한 구체적이고 상세하게 설명해주세요."""
+        system_prompt = """당신은 이미지 분석 전문가입니다. 주어진 이미지를 자세히 분석하고 설명해주세요.\n이미지에 있는 텍스트, 객체, 사람, 장면 등을 모두 포함하여 설명해주세요.\n가능한 구체적이고 상세하게 설명해주세요."""
 
         # 사용자 프롬프트 생성
         if query:
@@ -167,14 +230,15 @@ def analyze_image_with_llm(image_path_or_image: Union[str, Image.Image], query: 
         else:
             user_prompt = "이 이미지를 자세히 분석해주세요."
 
-        # 메시지 생성
+        # 메시지 생성 (LLaVA 포맷)
         messages = [
             SystemMessage(content=system_prompt),
             HumanMessage(content=[
                 {"type": "text", "text": user_prompt},
-                {"type": "image_url", "image_url": f"data:image/jpeg;base64,{base64_image}"}
+                {"type": "image_url", "image_url": image_url}
             ])
         ]
+        logger.debug(f"LLaVA message content: {messages}")
 
         # LLM 호출
         response = llm_image.invoke(messages)
