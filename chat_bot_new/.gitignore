@@ -39,3 +39,6 @@ m_agent_chatbot/logs/
 m_agent_chatbot/chat_history.json
 m_agent_chatbot/.poetry-cache/
 m_agent_chatbot/poetry.toml
+
+#gradio
+.gradio/
