@@ -18,12 +18,24 @@ build/
 .idea/
 
 # Misc
-.DS_Store
+.DS_Store 
 
 # Large files and data
 *.pdf
 m_agent_chatbot/data/pdfs/
 m_agent_chatbot/data/chroma_db/
+m_agent_chatbot/data/chroma_backups/
+m_agent_chatbot/data/images/
+m_agent_chatbot/data/pdf_index.json
+m_agent_chatbot/data/pdf_metadata.json
 *.sqlite3
 *.bin
 *.pickle
+
+# Local runtime data
+logs/
+*.log
+m_agent_chatbot/logs/
+m_agent_chatbot/chat_history.json
+m_agent_chatbot/.poetry-cache/
+m_agent_chatbot/poetry.toml
